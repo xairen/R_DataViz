@@ -1,0 +1,308 @@
+---
+title: "ISTE 782: FINALS"
+author : Abhinav Srinivasan
+date: '2021-08-09'
+output:
+  pdf_document:
+    latex_engine: pdflatex
+  html_document:
+    df_print: paged
+header-includes: \usepackage{booktabs}
+---
+
+```{r echo=FALSE}
+# This chunk is just to make it possible to shrink the manufacturerface in succeeding chunks. Mainly this will be used for the crosstabs.
+def.chunk.hook <- knitr::knit_hooks$get("chunk")
+knitr::knit_hooks$set(chunk = function(x, options) {
+  x <- def.chunk.hook(x, options)
+  ifelse(options$size != "normalsize", paste0("\\", options$size,"\n\n", x, "\n\n \\normalsize"), x)
+})
+
+```
+
+#Introduction 
+
+For this finals, the dataset being utilized is a craiglist vehicle listing dataset. The dataset consists of information about the car such as cylinders, model, manufacturer, price, paint color, etc. At first look the dataset is huge and consists of a variety of classes for each column. Intial step is to load the dataset and declar the packages that will used in this report. There are a lot of missing values as well which will be replaced by NA. Columns such as url, region_url, county, etc are redundant columns that will be removed from the dataset. 
+
+This report mainly focuses on data exploration and visualization to gain some useful insights. 
+
+
+
+# Loading Data
+
+```{r loadthemdata}
+library(tidyverse)
+library(data.table)
+library(hrbrthemes)
+library(tidyr)
+library(viridis)
+library(ggplot2)
+library(dplyr)
+vehicledata<-fread("vehicles.csv")
+```
+# Data Preprocessing
+
+Data preprocessing is done here. Below are the steps.
+
+
+##Changing missing values to NA
+
+```{r class}
+vehicledata <- vehicledata %>% 
+  mutate_at(vars(-group_cols(),-posting_date),na_if,"")
+
+vehicledata <- vehicledata %>% 
+  mutate_at(vars(-group_cols(),-posting_date),na_if," ")
+```
+
+##Formatting data types
+
+```{r forma}
+vehicledata$posting_date <- as.POSIXct(vehicledata$posting_date,
+                                format = "%Y-%m-%dT%H:%M",
+                                tz = "America/New_York")
+
+vehicledata$odometer <- as.integer(vehicledata$odometer)
+vehicledata$price <- as.integer(vehicledata$price)
+
+```
+
+##Removing columns that are not required
+
+```{r rm}
+vehicledata <- select(vehicledata ,-c("id", "url", "region_url", "VIN", "image_url", "county", "description", "lat", "long"))
+```
+
+#Data exploration 
+
+Here each column and attribute is analysed. 
+
+##What are the various manufactuers?
+
+From the below bar plot, we can see that most of the vehicles have been manufactured by ford followed by chevorlet and toyata. The NA values have been removed as a significant number of vehicles had missing values.
+
+```{r manu-com}
+autocount <- vehicledata %>%
+  group_by(manufacturer) %>%
+  summarize(count=n()) %>%
+  filter(count>1000)
+autocount$manufacturer<-factor(autocount$manufacturer, levels=autocount$manufacturer[order(autocount$count)]) 
+
+ggplot(data=subset(autocount, !is.na(manufacturer)),aes(x=manufacturer,y=count,fill=count,label=count))+geom_col(fill="cornflowerblue")+ labs(title = "Manufacturers")+xlab("Manufacturers")+ylab("Count")+ theme(axis.line=element_line(colour = "skyblue", size = 1),legend.title = element_text(face = "bold"))+coord_flip()
+
+```
+
+
+
+## Most common Transmission Type
+
+The three type of transmissions found in the vehicles : Automatic, Manual and other. Auto has the most common transmission type followed by other. Other vehicles could be either an electric or some other type of vehicle.  
+
+``` {r transmission}
+autot <- vehicledata %>%
+  group_by(transmission) %>%
+  summarize(count=n()) %>%
+  filter(count>0)
+autot$transmission<-factor(autot$transmission, levels=autot$transmission[order(autot$count)]) 
+
+ggplot(data = subset(autot, !is.na(transmission)), aes(x=transmission,y=count,fill=transmission)) + geom_bar(width=1, stat="identity")+labs(title = "Transmission type")
+```
+
+## Size of the vehicle
+
+Vehicles have been classified depending on their sizes. The below chart tells us that full-size vehicles are more common followed by mid-size. This means that most of the vehicles sold on craiglist are full-size vehicles.
+
+```{r size}
+autocount <- vehicledata %>%
+  group_by(size) %>%
+  summarize(count=n()) %>%
+  filter(count>0)
+autocount$size<-factor(autocount$size, levels=autocount$size[order(autocount$count)]) 
+
+ggplot(data = subset(autocount, !is.na(size)),aes(x=size,y=count))+
+  geom_segment(aes(x=size, xend=size, y=0, yend=count), color ="black")+ geom_point(color="orange", size=4) + theme_light() + xlab("Size")+ylab("Count")+theme(axis.line=element_line(colour = "orange", size = 1))+labs(title = "Frequency of different sizes")
+```
+## Type of vehicle
+
+There are over 75000 vehicles each that are a sedan or a SUV. A majority of the group is of the same type. 
+
+```{r type}
+ggplot(data = subset(vehicledata, !is.na(type)), aes(x = type))+geom_bar(fill="brown1")+theme(axis.title.x = element_text(lineheight = 1, size = 7))+coord_flip()
+```
+
+
+
+
+## Top 5 states with most number of vehicle listing 
+
+California has 50614 vehicle listing which is almost double the number of listings that Florida which is the second highest amongst the 50 states in the US. Most of the states have less than 17500 vehicles listed.
+
+``` {r 5states}
+autost <- vehicledata %>%
+  group_by(state) %>%
+  summarize(count=n()) %>%
+  filter(count>17500)
+autost$state<-factor(autost$state, levels=autost$state[order(autost$count)]) 
+
+ggplot(autost,aes(x=state,y=count,fill=count,label=count))+geom_col(fill="darkolivegreen")+geom_text(nudge_y=2500) + labs(title = "State wise vehicle listing")+xlab("State")+ylab("Count")+ theme_light()+coord_flip()
+```
+
+## State-wise frequency of vehicle listing
+
+The below geomap was created to have a better visualization of the frequency of vehicle listings through the entire country(state-wise). We can also observe that states that are towards the north seem to have comparetively less number of vehicle listings.
+
+``` {r map}
+library(usmap)
+
+autocount <- vehicledata %>%
+  group_by(state) %>%
+  summarize(count=n()) %>%
+  filter(count>0)
+autocount$state<-factor(autocount$state, levels=autocount$state[order(autocount$count)])
+
+plot_usmap(data = autocount , values = "count", color = "blue") + 
+  scale_fill_continuous(
+    low = "white", high = "blue", name = "Number of listings", label = scales::comma
+  ) + theme(legend.position = "left")
+
+```
+
+## Number of cylinders
+
+In this plot, we will be seeing the number of cylinders for the listed vehicles. There are 94169 vehicles that have 6 cylinders while there are only 209 number of vehicles that have 12 cylinders. This highly depends on the fuel consumption and the mileage that the vehicle can provide us with. The most optimal number of cylinders judging from thie graph seems to be 6,4 and 8.
+
+```{r cylinders}
+cycount <- vehicledata%>%
+  group_by(cylinders) %>%
+  summarize(count=n()) %>%
+  filter(count>20)
+cycount$cylinders<-factor(cycount$cylinders, levels=cycount$cylinders[order(cycount$count)]) 
+
+ggplot(data = subset(cycount, !is.na(cylinders)),aes(x=cylinders,y=count,fill=count,label=count))+geom_col(fill="red")+geom_text(nudge_y=10000) + labs(title = "Number of vehicles with different types of cylinders")+xlab("Cylinders")+ylab("Count")+ theme_light()+theme(axis.line=element_line(colour = "red", size = 1))
+```
+
+## Vehicle paint color
+
+Around 80000 vehicles have their paint color as white which is the most common type of color for a automobile. Black color seems to be the next choice after white. Purple color has the least number of vehicles while there a significant amount of vehicles with silver, red and blue.
+
+```{r paint-color}
+colors1 <- c("black","blue","brown","violet","darkolivegreen","grey","orange","purple","red","darkslategrey","antiquewhite","yellow")
+autocolor <- vehicledata[!is.na(paint_color)]
+
+qplot(autocolor$paint_color, xlab = 'Color', ylab = 'Count', main='Vehicle paint color', fill=factor(autocolor$paint_color)) + 
+  scale_fill_manual(values=colors1)+theme_classic()+coord_flip()
+
+```
+
+##Price vs cylinder
+
+The following shows us that the 8 cylinder vehicles are of a higher price but it is not the only determining factor. The most expensive 12 cylinder vehicles are around the price of 250000 to 400000.
+
+```{r price vs cylinder}
+ggplot(data = subset(vehicledata, !is.na(cylinders) & price<1000000), aes(x = cylinders, y = price)) + geom_point(position = 'jitter')
+```
+## Year and odometer
+
+The below scatterplot shows us the odometer reading of the vehicle depending on the year. The data is taken after the year 2015 to provide us with some insights. Except in 2020 there have been cars with the highest odometer reading(10000000). While in every year even before 2015 most of the cars seem to have a low odometer reading. This could be because of the pandemic and more people have not used their vehicles. 
+
+```{r year vs odometer}
+
+ggplot(data = subset(vehicledata, !is.na(odometer) & year > 2015), aes(x = year, y = odometer)) +geom_point(colour = 'blue') + 
+  scale_x_continuous(breaks = seq(2015, 2022, 1), minor_breaks = NULL)
+
+```
+
+##Price vs manufacturer
+
+In the below scatterplot, the price value has been filtered to show prices of the vehicles which are less 100000. The vehicles that have the highest price are from ford and mercedes-benz.
+
+```{r odometer and price}
+ggplot(data = subset(vehicledata, !is.na(price) & !is.na(manufacturer) & price<1000000), aes(x=manufacturer,y=price))+geom_point(color="orange")+theme(axis.text.y = element_text(lineheight = 1, size = 7))+coord_flip()
+```
+## Size and Fuel 
+
+A denisty graph has been created to see what is the size and fuel type of most of these vehicles. Disel is the most common fuel type for full size vehicles. There is a relatively high number of gas full-size vehicles compared to other gas operated vehicles.
+
+```{r size vs fuel}
+ggplot(data = subset(vehicledata, !is.na(size) & !is.na(fuel)), aes(x=size, group=fuel, fill=fuel))+geom_density(adjust=2, alpha=0.4)
+
+```
+## Condition and year
+
+The following graph shows us that after 2018, most of the vehicles are in new condition. We can clearly see that there is a higher number of salvage and fair vehicles around 2010. To the contrary there are a significant number of vehicles from 2012 that are kept in excellent condition.
+
+```{r condition vs year}
+library(ggridges)
+
+ggplot(data = subset(vehicledata, !is.na(condition) & year>2010), aes(x=year, y=condition, fill=condition)) + geom_density_ridges() + theme_ridges() + theme(legend.position = "none")+scale_x_continuous(breaks = seq(2012, 2022, 2), minor_breaks = NULL)
+
+```
+
+##State and condition
+
+A cross table is utilized to see whether there is any insight we can get between state and the condition of the vehicle. We know that most of the vehicles listed are from California and most of them seem to be in either excellent or good condition. The states in this table are the top 5 states that have the most number of listed vehicles. California in terms of having new condition vehicles seems to fall short than the rest of the other states. 8152 vehicles listed in Florida are in excellent condition which is at a higher percentage that California. 
+
+```{r corr1}
+library(gmodels)
+
+condstate<- vehicledata %>%
+  filter(condition=="new"|condition=="salvage"|condition=="new"|condition=="like new"|condition=="good"|condition=="fair"|condition=="excellent",state=="ca"|state=="fl"|state=="tx"|state=="ny"|state=="oh")%>%
+select(state,condition)
+CrossTable(condstate$state, condstate$condition)
+```
+##Type and manufacturer
+
+In this crosstab, the most common type of vehicle and manufacturer are put together. As we know, ford has the highest number of listing vehicles and also has the highest number of sedan, and pickup type of vehicle. Honda and Toyota have higher number of sedan type of vehicle. Honda has very few number of pickup type of vehicle.
+
+```{r corr2}
+
+cydata<- vehicledata %>%
+  filter(type=="SUV"|type=="sedan"|type=="pickup", manufacturer=="ford"|manufacturer=="toyota"|manufacturer=="honda")%>%
+  select(type,manufacturer)
+CrossTable(cydata$type, cydata$manufacturer)
+
+```
+
+##Drive and year
+
+In this jitter plot, we can observe that rwd type of drive was more common back in the old days(from 1960 to 2000). After 2000, there seems to be an increase in fwd and 4wd drive.
+
+```{r jitter with drive and year}
+ggplot(data = subset(vehicledata, !is.na(drive) & year>1960), aes(x=drive,y=year)) +geom_jitter(width=0.4, size=1, alpha = 0.2, shape = 1,color="lightblue3")+coord_flip()
+```
+
+
+##Conclusion
+
+
+In this report, the dataset being utilized is a craiglist vehicle listing dataset that is used to perform data analysis and come up with visualizations. 
+
+Firstly, the dataset is loaded along with the packages that are required. After this, the data is cleaned. There were a lot of missing values and were replaced by NA. There were a couple of columns that were redundant and hence were removed. The dataset as a whole was versatile and requires tons of modification but can provide us with great insights. 
+
+There are 42 different types of manufacturers that have built the vehicle. Ford is the most common manufacturer. After this we found that Automatic vehicles have the highest frequency. This could be because of the growing popularity of automatic vehicles in this day and age.
+
+Full-size vehicles are the most frequent size of vehicles being listed. Most of the vehicles are either a sedan or SUV which makes sense since Full-size was the most common size amongst the rest.
+
+A barplot is plotted to check which states out of the 50 states in the USA have the highest number of listings. We found out that California has the highest number of vehicles that are listed followed by Florida. A geomap was created to check the denisty of number of vehciles listed in each state. We could notice that states towards the middle north had lower number of vehicles being listed. 
+
+Most of the vehicles have a 8 clyinders built them. 4 and 6 are also quiet popular but not as much as vehicles with 8 cylinders.Coming to the paint color of the vehicles, it seems that white was the more popular than the rest of the colors, atleast for the vehciles that are being listed.
+
+To gain more insights, we plotted a bunch of graphs to check what we can find or deduce.
+There were a couple of 8 cylinder vehicles that were expensive which the highest price for a 12 cylinder vehicle was around 350000. Another scatterplot was created to show the odometer reading depending on the entry year of the vehicle being listed. We noticed that except for 2020, all the other years the odometer reading is high depending on how much the vehicle has been driven. The reason for this low odometer in the year 2020 could be because of the pandemic. We also found out that atleast vehicle made by ford and mercedes-benz have the highest price(after filtering vallues that seemed like outliers). 
+
+Disel was the most common type of fuel for full-sized vehicles. We could say that most of the vehicles made by ford operate on disel or gas.
+
+Most of the vehicles are in new condition after 2018 while higher number of vehicles seem to be salvageable before 2010. This maybe due to the higher age of the vehicle. 
+
+The  first cross table showed us that most of the vehicles listed in California are either in good or excellent condition. Even though it is higher than the other states, it is lower in terms of percentage compared to Florida. The other cross table confirms that ford has the highest number of vehicles which are sedan and pickup type of vehicle while Honda has very few pickup automobiles.
+
+In the last plot, we can see that rwd was popular before the arrival of fwd and 4wd type of drive. 
+
+Even though that data was irregular and of a huge size, there was a good amount of insights that were gathered.
+
+
+
+
+
+
+
