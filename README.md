@@ -1,2 +1,3 @@
-# r-viz
-Visualization using R for a vehicles dataset 
+# Data Visualization using R
+
+Analyzing the "Vehicle" Dataset in R Studio utilizing various visualization methods.
